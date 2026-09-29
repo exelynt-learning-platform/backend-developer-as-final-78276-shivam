@@ -2,17 +2,34 @@ package com.example.resourcebooking.config;
 
 import java.math.BigDecimal;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import com.example.resourcebooking.entity.*;
+import com.example.resourcebooking.entity.Resource;
+import com.example.resourcebooking.entity.Role;
+import com.example.resourcebooking.entity.User;
 import com.example.resourcebooking.repository.ResourceRepository;
 import com.example.resourcebooking.repository.UserRepository;
 
 @Configuration
+@Profile("dev")
 public class DataInitializer {
+
+    @Value("${seed.admin.username}")
+    private String adminUsername;
+
+    @Value("${seed.admin.password}")
+    private String adminPassword;
+
+    @Value("${seed.user.username}")
+    private String userUsername;
+
+    @Value("${seed.user.password}")
+    private String userPassword;
 
     @Bean
     CommandLineRunner seedData(
@@ -22,21 +39,23 @@ public class DataInitializer {
 
         return args -> {
 
-            if (!userRepository.existsByUsername("admin")) {
+            if (!userRepository.existsByUsername(adminUsername)) {
+
                 User admin = new User();
-                admin.setUsername("admin");
+                admin.setUsername(adminUsername);
                 admin.setPassword(
-                        passwordEncoder.encode("Admin@123"));
+                        passwordEncoder.encode(adminPassword));
                 admin.setRole(Role.ADMIN);
 
                 userRepository.save(admin);
             }
 
-            if (!userRepository.existsByUsername("user")) {
+            if (!userRepository.existsByUsername(userUsername)) {
+
                 User user = new User();
-                user.setUsername("user");
+                user.setUsername(userUsername);
                 user.setPassword(
-                        passwordEncoder.encode("User@123"));
+                        passwordEncoder.encode(userPassword));
                 user.setRole(Role.USER);
 
                 userRepository.save(user);
