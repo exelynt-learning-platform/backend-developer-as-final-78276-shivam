@@ -3,6 +3,7 @@ package com.example.resourcebooking.service;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.example.resourcebooking.dto.ResourceRequestDto;
 import com.example.resourcebooking.dto.ResourceResponseDto;
@@ -19,12 +20,13 @@ public class ResourceServiceImpl implements ResourceService {
     private final ResourceRepository resourceRepository;
 
     @Override
+    @Transactional
     public ResourceResponseDto createResource(
             ResourceRequestDto request) {
 
         Resource resource = new Resource();
-        resource.setName(request.getName());
-        resource.setDescription(request.getDescription());
+        resource.setName(request.getName().trim());
+        resource.setDescription(request.getDescription().trim());
         resource.setPrice(request.getPrice());
         resource.setAvailable(request.getAvailable());
 
@@ -32,7 +34,9 @@ public class ResourceServiceImpl implements ResourceService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<ResourceResponseDto> getAllResources() {
+
         return resourceRepository.findAll()
                 .stream()
                 .map(this::toDto)
@@ -40,6 +44,7 @@ public class ResourceServiceImpl implements ResourceService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ResourceResponseDto getResourceById(Long id) {
 
         Resource resource = resourceRepository.findById(id)
@@ -51,6 +56,7 @@ public class ResourceServiceImpl implements ResourceService {
     }
 
     @Override
+    @Transactional
     public ResourceResponseDto updateResource(
             Long id,
             ResourceRequestDto request) {
@@ -60,8 +66,8 @@ public class ResourceServiceImpl implements ResourceService {
                         new ResourceNotFoundException(
                                 "Resource not found"));
 
-        resource.setName(request.getName());
-        resource.setDescription(request.getDescription());
+        resource.setName(request.getName().trim());
+        resource.setDescription(request.getDescription().trim());
         resource.setPrice(request.getPrice());
         resource.setAvailable(request.getAvailable());
 
@@ -69,6 +75,7 @@ public class ResourceServiceImpl implements ResourceService {
     }
 
     @Override
+    @Transactional
     public void deleteResource(Long id) {
 
         Resource resource = resourceRepository.findById(id)
@@ -80,6 +87,7 @@ public class ResourceServiceImpl implements ResourceService {
     }
 
     private ResourceResponseDto toDto(Resource resource) {
+
         return new ResourceResponseDto(
                 resource.getId(),
                 resource.getName(),

@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import com.example.resourcebooking.dto.LoginRequestDto;
 import com.example.resourcebooking.dto.LoginResponseDto;
 import com.example.resourcebooking.entity.User;
+import com.example.resourcebooking.exception.UnauthorizedException;
 import com.example.resourcebooking.repository.UserRepository;
 import com.example.resourcebooking.security.JwtService;
 
@@ -22,17 +23,17 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public LoginResponseDto login(LoginRequestDto request) {
 
-        User user = userRepository.findByUsername(
-                request.getUsername())
+        User user = userRepository
+                .findByUsername(request.getUsername())
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new UnauthorizedException(
                                 "Invalid username or password"));
 
         if (!passwordEncoder.matches(
                 request.getPassword(),
                 user.getPassword())) {
 
-            throw new IllegalArgumentException(
+            throw new UnauthorizedException(
                     "Invalid username or password");
         }
 

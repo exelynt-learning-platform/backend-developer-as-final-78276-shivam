@@ -19,6 +19,8 @@ import lombok.RequiredArgsConstructor;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final RestAuthenticationEntryPoint authenticationEntryPoint;
+    private final RestAccessDeniedHandler accessDeniedHandler;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -34,9 +36,12 @@ public class SecurityConfig {
 
             .sessionManagement(session ->
                 session.sessionCreationPolicy(
-                    SessionCreationPolicy.STATELESS
-                )
-            )
+                    SessionCreationPolicy.STATELESS))
+
+            .exceptionHandling(exception ->
+                exception
+                    .authenticationEntryPoint(authenticationEntryPoint)
+                    .accessDeniedHandler(accessDeniedHandler))
 
             .authorizeHttpRequests(auth -> auth
 
@@ -44,72 +49,68 @@ public class SecurityConfig {
 
                 .requestMatchers(
                     "/swagger-ui/**",
-                    "/v3/api-docs/**"
-                ).permitAll()
+                    "/v3/api-docs/**")
+                .permitAll()
 
-                // ADMIN only - user management
                 .requestMatchers("/api/users/**")
                 .hasRole("ADMIN")
 
-                // Resources
                 .requestMatchers(
                     HttpMethod.GET,
-                    "/api/resources/**"
-                ).authenticated()
+                    "/api/resources/**")
+                .authenticated()
 
                 .requestMatchers(
                     HttpMethod.POST,
-                    "/api/resources/**"
-                ).hasRole("ADMIN")
+                    "/api/resources/**")
+                .hasRole("ADMIN")
 
                 .requestMatchers(
                     HttpMethod.PUT,
-                    "/api/resources/**"
-                ).hasRole("ADMIN")
+                    "/api/resources/**")
+                .hasRole("ADMIN")
 
                 .requestMatchers(
                     HttpMethod.DELETE,
-                    "/api/resources/**"
-                ).hasRole("ADMIN")
+                    "/api/resources/**")
+                .hasRole("ADMIN")
 
-                // Reservations
                 .requestMatchers(
                     HttpMethod.POST,
-                    "/api/reservations"
-                ).authenticated()
+                    "/api/reservations")
+                .authenticated()
 
                 .requestMatchers(
                     HttpMethod.GET,
-                    "/api/reservations/my"
-                ).authenticated()
+                    "/api/reservations/my")
+                .authenticated()
 
                 .requestMatchers(
                     HttpMethod.GET,
-                    "/api/reservations"
-                ).hasRole("ADMIN")
+                    "/api/reservations")
+                .hasRole("ADMIN")
 
                 .requestMatchers(
                     HttpMethod.GET,
-                    "/api/reservations/*"
-                ).authenticated()
+                    "/api/reservations/*")
+                .authenticated()
 
                 .requestMatchers(
                     HttpMethod.PUT,
-                    "/api/reservations/*"
-                ).hasRole("ADMIN")
+                    "/api/reservations/*")
+                .hasRole("ADMIN")
 
                 .requestMatchers(
                     HttpMethod.DELETE,
-                    "/api/reservations/*"
-                ).hasRole("ADMIN")
+                    "/api/reservations/*")
+                .hasRole("ADMIN")
 
                 .anyRequest().authenticated()
             )
 
             .addFilterBefore(
                 jwtAuthenticationFilter,
-                UsernamePasswordAuthenticationFilter.class
-            );
+                UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.example.resourcebooking.dto.UserRequestDto;
 import com.example.resourcebooking.dto.UserResponseDto;
@@ -21,15 +22,19 @@ public class UserServiceImpl implements UserService {
     private final PasswordEncoder passwordEncoder;
 
     @Override
+    @Transactional
     public UserResponseDto createUser(UserRequestDto request) {
 
-        if (userRepository.existsByUsername(request.getUsername())) {
+        String username = request.getUsername().trim();
+
+        if (userRepository.existsByUsername(username)) {
             throw new IllegalArgumentException(
                     "Username already exists");
         }
 
         User user = new User();
-        user.setUsername(request.getUsername());
+
+        user.setUsername(username);
         user.setPassword(
                 passwordEncoder.encode(request.getPassword()));
         user.setRole(request.getRole());
@@ -38,7 +43,9 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<UserResponseDto> getAllUsers() {
+
         return userRepository.findAll()
                 .stream()
                 .map(this::toDto)
@@ -46,7 +53,9 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public UserResponseDto getUserById(Long id) {
+
         User user = userRepository.findById(id)
                 .orElseThrow(() ->
                         new UserNotFoundException(
@@ -56,6 +65,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
     public UserResponseDto updateUser(
             Long id,
             UserRequestDto request) {
@@ -65,15 +75,17 @@ public class UserServiceImpl implements UserService {
                         new UserNotFoundException(
                                 "User not found"));
 
-        if (!user.getUsername().equals(request.getUsername())
-                && userRepository.existsByUsername(
-                        request.getUsername())) {
+        String username = request.getUsername().trim();
+
+        if (!user.getUsername().equals(username)
+                && userRepository.existsByUsername(username)) {
 
             throw new IllegalArgumentException(
                     "Username already exists");
         }
 
-        user.setUsername(request.getUsername());
+        user.setUsername(username);
+        user.setRole(request.getRole());
 
         if (request.getPassword() != null
                 && !request.getPassword().isBlank()) {
@@ -83,12 +95,11 @@ public class UserServiceImpl implements UserService {
                             request.getPassword()));
         }
 
-        user.setRole(request.getRole());
-
         return toDto(userRepository.save(user));
     }
 
     @Override
+    @Transactional
     public void deleteUser(Long id) {
 
         User user = userRepository.findById(id)
@@ -100,6 +111,7 @@ public class UserServiceImpl implements UserService {
     }
 
     private UserResponseDto toDto(User user) {
+
         return new UserResponseDto(
                 user.getId(),
                 user.getUsername(),

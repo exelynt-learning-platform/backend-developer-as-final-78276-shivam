@@ -1,17 +1,32 @@
 package com.example.resourcebooking.service;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
 
-import org.springframework.data.domain.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.example.resourcebooking.dto.ReservationRequestDto;
 import com.example.resourcebooking.dto.ReservationResponseDto;
-import com.example.resourcebooking.entity.*;
-import com.example.resourcebooking.exception.*;
+import com.example.resourcebooking.entity.Reservation;
+import com.example.resourcebooking.entity.ReservationStatus;
+import com.example.resourcebooking.entity.Resource;
+import com.example.resourcebooking.entity.Role;
+import com.example.resourcebooking.entity.User;
+import com.example.resourcebooking.exception.ConflictException;
+import com.example.resourcebooking.exception.ForbiddenException;
+import com.example.resourcebooking.exception.ReservationNotFoundException;
+import com.example.resourcebooking.exception.ResourceNotFoundException;
+import com.example.resourcebooking.exception.UnauthorizedException;
+import com.example.resourcebooking.exception.UserNotFoundException;
 import com.example.resourcebooking.repository.ReservationRepository;
 import com.example.resourcebooking.repository.ResourceRepository;
 import com.example.resourcebooking.repository.UserRepository;
@@ -22,11 +37,17 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ReservationServiceImpl implements ReservationService {
 
+    private static final List<ReservationStatus> BLOCKING_STATUSES =
+            List.of(
+                    ReservationStatus.PENDING,
+                    ReservationStatus.CONFIRMED);
+
     private final ReservationRepository reservationRepository;
     private final UserRepository userRepository;
     private final ResourceRepository resourceRepository;
 
     @Override
+    @Transactional
     public ReservationResponseDto createReservation(
             ReservationRequestDto request) {
 
@@ -34,8 +55,8 @@ public class ReservationServiceImpl implements ReservationService {
 
         User user = getLoggedInUser();
 
-        Resource resource = resourceRepository.findById(
-                request.getResourceId())
+        Resource resource = resourceRepository
+                .findByIdForUpdate(request.getResourceId())
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
                                 "Resource not found"));
@@ -49,9 +70,7 @@ public class ReservationServiceImpl implements ReservationService {
                 reservationRepository
                     .existsByResourceAndStatusInAndStartTimeLessThanAndEndTimeGreaterThan(
                             resource,
-                            java.util.List.of(
-                                    ReservationStatus.PENDING,
-                                    ReservationStatus.CONFIRMED),
+                            BLOCKING_STATUSES,
                             request.getEndTime(),
                             request.getStartTime());
 
@@ -61,6 +80,7 @@ public class ReservationServiceImpl implements ReservationService {
         }
 
         Reservation reservation = new Reservation();
+
         reservation.setUser(user);
         reservation.setResource(resource);
         reservation.setStartTime(request.getStartTime());
@@ -73,11 +93,10 @@ public class ReservationServiceImpl implements ReservationService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ReservationResponseDto getReservationById(Long id) {
 
-        Reservation reservation =
-                findReservation(id);
-
+        Reservation reservation = findReservation(id);
         User loggedInUser = getLoggedInUser();
 
         if (loggedInUser.getRole() == Role.ADMIN) {
@@ -95,6 +114,7 @@ public class ReservationServiceImpl implements ReservationService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<ReservationResponseDto> getMyReservations(
             ReservationStatus status,
             BigDecimal minPrice,
@@ -105,9 +125,14 @@ public class ReservationServiceImpl implements ReservationService {
 
         User user = getLoggedInUser();
 
-        validatePageAndPrice(page, size, minPrice, maxPrice);
+        validatePageAndPrice(
+                page,
+                size,
+                minPrice,
+                maxPrice);
 
-        Pageable pageable = createPageable(page, size, sort);
+        Pageable pageable =
+                createPageable(page, size, sort);
 
         Specification<Reservation> specification =
                 buildSpecification(
@@ -122,6 +147,7 @@ public class ReservationServiceImpl implements ReservationService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<ReservationResponseDto> getAllReservations(
             ReservationStatus status,
             BigDecimal minPrice,
@@ -130,9 +156,14 @@ public class ReservationServiceImpl implements ReservationService {
             int size,
             String sort) {
 
-        validatePageAndPrice(page, size, minPrice, maxPrice);
+        validatePageAndPrice(
+                page,
+                size,
+                minPrice,
+                maxPrice);
 
-        Pageable pageable = createPageable(page, size, sort);
+        Pageable pageable =
+                createPageable(page, size, sort);
 
         Specification<Reservation> specification =
                 buildSpecification(
@@ -147,6 +178,7 @@ public class ReservationServiceImpl implements ReservationService {
     }
 
     @Override
+    @Transactional
     public ReservationResponseDto updateReservation(
             Long id,
             ReservationRequestDto request) {
@@ -154,10 +186,13 @@ public class ReservationServiceImpl implements ReservationService {
         validateReservationTime(request);
 
         Reservation reservation =
-                findReservation(id);
+                reservationRepository.findByIdForUpdate(id)
+                        .orElseThrow(() ->
+                                new ReservationNotFoundException(
+                                        "Reservation not found"));
 
-        Resource resource = resourceRepository.findById(
-                request.getResourceId())
+        Resource resource = resourceRepository
+                .findByIdForUpdate(request.getResourceId())
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
                                 "Resource not found"));
@@ -167,43 +202,51 @@ public class ReservationServiceImpl implements ReservationService {
                     "Resource is not available");
         }
 
-        boolean overlapping =
-                reservationRepository
-                    .existsByResourceAndStatusInAndStartTimeLessThanAndEndTimeGreaterThanAndIdNot(
-                            resource,
-                            java.util.List.of(
-                                    ReservationStatus.PENDING,
-                                    ReservationStatus.CONFIRMED),
-                            request.getEndTime(),
-                            request.getStartTime(),
-                            id);
+        ReservationStatus targetStatus =
+                request.getStatus() != null
+                        ? request.getStatus()
+                        : reservation.getStatus();
 
-        if (reservation.getStatus() != ReservationStatus.CANCELLED
-                && overlapping) {
+        /*
+         * Only active reservations block other bookings.
+         * A reservation being changed to CANCELLED is non-blocking.
+         */
+        if (targetStatus != ReservationStatus.CANCELLED) {
 
-            throw new ConflictException(
-                    "Resource is already booked for the selected time");
+            boolean overlapping =
+                    reservationRepository
+                        .existsByResourceAndStatusInAndStartTimeLessThanAndEndTimeGreaterThanAndIdNot(
+                                resource,
+                                BLOCKING_STATUSES,
+                                request.getEndTime(),
+                                request.getStartTime(),
+                                id);
+
+            if (overlapping) {
+                throw new ConflictException(
+                        "Resource is already booked for the selected time");
+            }
         }
 
         reservation.setResource(resource);
         reservation.setStartTime(request.getStartTime());
         reservation.setEndTime(request.getEndTime());
         reservation.setPrice(resource.getPrice());
-
-        // ADMIN may update reservation status.
-        if (request.getStatus() != null) {
-            reservation.setStatus(request.getStatus());
-        }
+        reservation.setStatus(targetStatus);
 
         return convertToResponseDto(
                 reservationRepository.save(reservation));
     }
 
     @Override
+    @Transactional
     public void deleteReservation(Long id) {
 
         Reservation reservation =
-                findReservation(id);
+                reservationRepository.findByIdForUpdate(id)
+                        .orElseThrow(() ->
+                                new ReservationNotFoundException(
+                                        "Reservation not found"));
 
         reservationRepository.delete(reservation);
     }
@@ -222,22 +265,24 @@ public class ReservationServiceImpl implements ReservationService {
 
         return userRepository.findByUsername(username)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new UserNotFoundException(
                                 "User not found"));
     }
 
     private String getLoggedInUsername() {
 
         Authentication authentication =
-                SecurityContextHolder.getContext()
+                SecurityContextHolder
+                        .getContext()
                         .getAuthentication();
 
         if (authentication == null
                 || !authentication.isAuthenticated()
+                || authentication.getName() == null
                 || "anonymousUser".equals(
                         authentication.getName())) {
 
-            throw new ForbiddenException(
+            throw new UnauthorizedException(
                     "Authentication is required");
         }
 
@@ -262,6 +307,13 @@ public class ReservationServiceImpl implements ReservationService {
 
             throw new IllegalArgumentException(
                     "Start time must be before end time");
+        }
+
+        if (request.getStartTime()
+                .isBefore(LocalDateTime.now())) {
+
+            throw new IllegalArgumentException(
+                    "Start time cannot be in the past");
         }
     }
 
@@ -318,20 +370,33 @@ public class ReservationServiceImpl implements ReservationService {
 
         String[] sortData = sort.split(",");
 
+        if (sortData.length > 2) {
+            throw new IllegalArgumentException(
+                    "Sort format must be field,direction");
+        }
+
         String field = sortData[0].trim();
 
         if (!isAllowedSortField(field)) {
             throw new IllegalArgumentException(
-                    "Invalid sort field. Allowed: id,startTime,endTime,price,status");
+                    "Invalid sort field. Allowed: "
+                            + "id,startTime,endTime,price,status");
         }
 
         Sort.Direction direction = Sort.Direction.ASC;
 
-        if (sortData.length > 1
-                && "desc".equalsIgnoreCase(
-                        sortData[1].trim())) {
+        if (sortData.length == 2) {
 
-            direction = Sort.Direction.DESC;
+            String directionValue =
+                    sortData[1].trim();
+
+            if ("desc".equalsIgnoreCase(directionValue)) {
+                direction = Sort.Direction.DESC;
+
+            } else if (!"asc".equalsIgnoreCase(directionValue)) {
+                throw new IllegalArgumentException(
+                        "Sort direction must be asc or desc");
+            }
         }
 
         return PageRequest.of(
